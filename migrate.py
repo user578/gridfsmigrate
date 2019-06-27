@@ -23,6 +23,7 @@ __maintainer__ = "Armin Felder"
 __status__ = "Production"
 __version__ = "1.0.0"
 
+import os
 from pymongo import MongoClient
 import gridfs
 from pprint import pprint
@@ -105,11 +106,17 @@ class Migrator():
 
                         if "extension" in upload and upload["extension"] != "":
                             fileext = "." + upload["extension"]
-                        else:
+                        if res.content_type is not None and \
+                                ("," in fileext or " " in fileext):
                             fileext = mime.guess_extension(res.content_type)
 
-                        if fileext is not None and fileext != "":
+                        if fileext is None:
+                            fileext = ""
+                        elif (len(fileext) > 1 and fileext[0] == "."):
                             filename = filename + fileext
+                            fileext = fileext[1:]
+
+                        print(filename, fileext)
 
                         i += 1
                         print("%i. Dumping %s %s" % (i, gridfsId,
@@ -119,6 +126,7 @@ class Migrator():
                         self.addtolog({
                             "id": gridfsId,
                             "file": filename,
+                            "fileext": fileext,
                             "collection": collection,
                             "md5": res.md5,
                             "key": key
@@ -134,8 +142,8 @@ class Migrator():
         file = open(self.logfile, "a")
         for entry in self.log:
             line = entry["id"] + "," + entry["file"] + "," + entry[
-                "collection"] + ",log" + entry["md5"] + "," + entry[
-                    "key"] + "\n"
+                "fileext"] + "," + entry["collection"] + ",log" + entry[
+                    "md5"] + "," + entry["key"] + "\n"
             file.write(line)
         file.close()
 
@@ -156,18 +164,21 @@ class Migrator():
             for row in reader:
                 dbId = row[0]
                 filename = row[1]
-                collectionName = row[2]
-                md5 = row[3]
-                key = row[4]
+                fileext = row[2]
+                collectionName = row[3]
+                md5 = row[4]
+                key = row[5]
 
                 collection = db[collectionName]
                 update_data = {
                     "store":
-                    target + ":Uploads",
+                        target + ":Uploads",
                     "path":
-                    "/ufs/" + target + ":Uploads/" + dbId + "/" + filename,
+                        "/ufs/" + target + ":Uploads/" + dbId + "/" + filename,
                     "url":
-                    "/ufs/" + target + ":Uploads/" + dbId + "/" + filename
+                        "/ufs/" + target + ":Uploads/" + dbId + "/" + filename,
+                    "extension": 
+                        fileext
                 }
 
                 if target == "AmazonS3":
@@ -186,7 +197,7 @@ class Migrator():
             i = 0
             for row in reader:
                 dbId = row[0]
-                collectionName = row[2]
+                collectionName = row[3]
                 fs = gridfs.GridFSBucket(db, bucket_name=collectionName)
 
                 i += 1
